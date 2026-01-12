@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Phone, Calendar, Clock } from "lucide-react";
 import dynamic from 'next/dynamic';
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { use, useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { getCityCoordinates } from "@/lib/city-coordinates";
@@ -106,9 +107,11 @@ export default function ShopPage({ params }: { params: Promise<{ id: string }> }
                             </div>
 
                             <div className="flex gap-4 mb-8">
-                                <Button className="bg-blue-600 hover:bg-blue-700">
-                                    <Calendar className="mr-2 h-4 w-4" /> Hızlı Randevu Al
-                                </Button>
+                                <Link href={`/book?shopId=${shopId}`}>
+                                    <Button className="bg-blue-600 hover:bg-blue-700">
+                                        <Calendar className="mr-2 h-4 w-4" /> Hızlı Randevu Al
+                                    </Button>
+                                </Link>
                                 {business.settings?.phone && (
                                     <Button variant="outline">
                                         <Phone className="mr-2 h-4 w-4" /> {business.settings.phone}

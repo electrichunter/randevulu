@@ -8,10 +8,12 @@ import { useRouter } from "next/navigation";
 import { CustomAlert } from "@/components/custom-alert";
 import { Check, Lock } from "lucide-react";
 
+import { resetPasswordSchema } from "@/lib/validations";
+import { toast } from "sonner";
+
 export default function ResetPasswordPage() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState<{ type: "success" | "error", title: string, content: string } | null>(null);
     const router = useRouter();
 
     // Validation States
@@ -30,39 +32,32 @@ export default function ResetPasswordPage() {
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!isFormValid) return;
+
+        // Validate with Zod
+        const validation = resetPasswordSchema.safeParse({ password });
+        if (!validation.success) {
+            toast.error(validation.error.issues[0].message);
+            return;
+        }
 
         setLoading(true);
-        setMessage(null);
 
         try {
             const { error } = await supabase.auth.updateUser({
-                password: password
+                password: validation.data.password
             });
 
             if (error) {
-                setMessage({
-                    type: "error",
-                    title: "Hata",
-                    content: error.message
-                });
+                toast.error("Hata: " + error.message);
             } else {
-                setMessage({
-                    type: "success",
-                    title: "Başarılı",
-                    content: "Şifreniz başarıyla güncellendi. Yönlendiriliyorsunuz..."
-                });
+                toast.success("Şifreniz başarıyla güncellendi! Yönlendiriliyorsunuz...");
                 setTimeout(() => {
                     router.push("/dashboard");
                 }, 2000);
             }
         } catch (error) {
             console.error("Update password error:", error);
-            setMessage({
-                type: "error",
-                title: "Beklenmedik Hata",
-                content: "Bir şeyler ters gitti."
-            });
+            toast.error("Beklenmedik bir hata oluştu.");
         } finally {
             setLoading(false);
         }
@@ -86,13 +81,6 @@ export default function ResetPasswordPage() {
                 <div className="bg-white px-6 py-8 shadow-xl rounded-2xl sm:px-10 border border-gray-100">
                     <form className="space-y-6" onSubmit={handleSubmit}>
 
-                        {message && (
-                            <CustomAlert
-                                type={message.type === "success" ? "success" : "error"}
-                                title={message.title}
-                                message={message.content}
-                            />
-                        )}
 
                         <div>
                             <label htmlFor="password" className="block text-sm font-medium text-gray-700">

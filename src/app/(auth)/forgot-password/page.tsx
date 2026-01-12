@@ -8,41 +8,38 @@ import { supabase } from "@/lib/supabase";
 import { CustomAlert } from "@/components/custom-alert";
 import { ArrowLeft, Mail } from "lucide-react";
 
+import { forgotPasswordSchema } from "@/lib/validations";
+import { toast } from "sonner";
+
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
-    const [alert, setAlert] = useState<{ type: "success" | "error", title: string, message: string } | null>(null);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+
+        // Validate with Zod
+        const validation = forgotPasswordSchema.safeParse({ email });
+        if (!validation.success) {
+            toast.error(validation.error.issues[0].message);
+            return;
+        }
+
         setLoading(true);
-        setAlert(null);
 
         try {
-            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            const { error } = await supabase.auth.resetPasswordForEmail(validation.data.email, {
                 redirectTo: `${window.location.origin}/dashboard/reset-password`,
             });
 
             if (error) {
-                setAlert({
-                    type: "error",
-                    title: "Hata",
-                    message: error.message
-                });
+                toast.error("Hata: " + error.message);
             } else {
-                setAlert({
-                    type: "success",
-                    title: "E-posta Gönderildi",
-                    message: "Şifre sıfırlama talimatları e-posta adresinize gönderildi. Lütfen gelen kutunuzu (ve spam klasörünü) kontrol edin."
-                });
+                toast.success("E-posta Gönderildi! Şifre sıfırlama talimatları e-posta adresinize gönderildi.");
             }
         } catch (error) {
             console.error("Reset password error:", error);
-            setAlert({
-                type: "error",
-                title: "Beklenmedik Hata",
-                message: "Bir şeyler ters gitti. Lütfen daha sonra tekrar deneyin."
-            });
+            toast.error("Beklenmedik bir hata oluştu.");
         } finally {
             setLoading(false);
         }
@@ -66,14 +63,6 @@ export default function ForgotPasswordPage() {
                 <div className="bg-white px-6 py-8 shadow-xl rounded-2xl sm:px-10 border border-gray-100">
                     <form className="space-y-6" onSubmit={handleSubmit}>
 
-                        {alert && (
-                            <CustomAlert
-                                type={alert.type}
-                                title={alert.title}
-                                message={alert.message}
-                                onClose={() => setAlert(null)}
-                            />
-                        )}
 
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
@@ -101,7 +90,7 @@ export default function ForgotPasswordPage() {
                             <Button
                                 type="submit"
                                 className="w-full flex justify-center bg-blue-600 hover:bg-blue-700 h-11 text-base shadow-lg shadow-blue-600/20"
-                                disabled={loading || alert?.type === "success"}
+                                disabled={loading}
                             >
                                 {loading ? "Gönderiliyor..." : "Sıfırlama Bağlantısı Gönder"}
                             </Button>

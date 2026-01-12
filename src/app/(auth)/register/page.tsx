@@ -7,10 +7,13 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
+import { registerSchema, type RegisterFormData } from "@/lib/validations";
+
+import { toast } from "sonner";
 
 export default function RegisterPage() {
     const [loading, setLoading] = useState(false);
-    const [accountType, setAccountType] = useState<"business" | "individual">("business");
+    const [accountType, setAccountType] = useState<"business" | "individual">("individual");
     const router = useRouter();
 
     // Form States
@@ -38,33 +41,47 @@ export default function RegisterPage() {
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!isFormValid) return;
+
+        // Validate with Zod
+        const validation = registerSchema.safeParse({
+            name,
+            email,
+            password,
+            accountType,
+        });
+
+        if (!validation.success) {
+            // Show first error
+            const firstError = validation.error.issues[0];
+            toast.error(firstError.message);
+            return;
+        }
 
         setLoading(true);
 
         try {
             const { data, error } = await supabase.auth.signUp({
-                email,
-                password,
+                email: validation.data.email,
+                password: validation.data.password,
                 options: {
                     data: {
-                        full_name: name,
-                        role: accountType,
+                        full_name: validation.data.name,
+                        role: validation.data.accountType,
                     }
                 }
             });
 
             if (error) {
-                alert("Kayıt hatası: " + error.message);
+                toast.error("Kayıt hatası: " + error.message);
             } else if (data.user) {
                 // 1. Eğer 'business' hesabı ise Tenants tablosunda işletme oluştur
                 let tenantId = null;
 
-                if (accountType === "business") {
+                if (validation.data.accountType === "business") {
                     const { data: tenant, error: tenantError } = await supabase
                         .from('tenants')
                         .insert({
-                            name: name, // İşletme adı
+                            name: validation.data.name, // İşletme adı
                             subscription_tier: 'free'
                         })
                         .select()
@@ -82,8 +99,8 @@ export default function RegisterPage() {
                     .from('profiles')
                     .insert({
                         id: data.user.id,
-                        full_name: name,
-                        role: accountType === 'business' ? 'owner' : 'customer',
+                        full_name: validation.data.name,
+                        role: validation.data.accountType === 'business' ? 'owner' : 'customer',
                         tenant_id: tenantId // Bireysel ise null, işletme ise ID
                     });
 
@@ -92,12 +109,12 @@ export default function RegisterPage() {
                     // Kritik hata değil, auth çalıştı. Kullanıcı sonradan profili tamamlayabilir.
                 }
 
-                alert("Kayıt başarılı! Veritabanı ve profiliniz oluşturuldu.");
+                toast.success("Kayıt başarılı! Giriş yapabilirsiniz.");
                 router.push("/login");
             }
         } catch (error) {
             console.error("Register error:", error);
-            alert("Bir hata oluştu.");
+            toast.error("Beklenmedik bir hata oluştu.");
         } finally {
             setLoading(false);
         }

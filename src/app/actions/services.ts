@@ -2,6 +2,7 @@
 
 import { supabase } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
+import { serviceSchema, uuidSchema } from '@/lib/validations'
 
 export interface Service {
     id: string
@@ -14,6 +15,7 @@ export interface Service {
 }
 
 export async function getServicesByTenant(tenantId: string) {
+    uuidSchema.parse(tenantId)
     const { data, error } = await supabase
         .from('services')
         .select('*')
@@ -30,22 +32,31 @@ export async function createService(tenantId: string, service: {
     price: number
     currency?: string
 }) {
-    const { data, error } = await supabase
-        .from('services')
-        .insert({
-            tenant_id: tenantId,
-            name: service.name,
-            duration_minutes: service.duration_minutes,
-            price: service.price,
-            currency: service.currency || 'TRY'
-        })
-        .select()
-        .single()
+    try {
+        // Validate inputs
+        uuidSchema.parse(tenantId)
+        const validated = serviceSchema.parse(service)
 
-    if (error) throw error
+        const { data, error } = await supabase
+            .from('services')
+            .insert({
+                tenant_id: tenantId,
+                ...validated
+            })
+            .select()
+            .maybeSingle()
 
-    revalidatePath('/dashboard/settings')
-    return data as Service
+        if (error) {
+            console.error("Create service error:", error);
+            throw new Error(`Hizmet oluşturulamadı: ${error.message}`);
+        }
+
+        revalidatePath('/dashboard/settings')
+        return data as Service
+    } catch (err: any) {
+        console.error("Critical error in createService:", err);
+        throw err;
+    }
 }
 
 export async function updateService(serviceId: string, updates: {
@@ -53,20 +64,36 @@ export async function updateService(serviceId: string, updates: {
     duration_minutes?: number
     price?: number
 }) {
-    const { data, error } = await supabase
-        .from('services')
-        .update(updates)
-        .eq('id', serviceId)
-        .select()
-        .single()
+    try {
+        // Validate inputs
+        uuidSchema.parse(serviceId)
+        // Partial validation for updates
+        const validated = serviceSchema.partial().parse(updates)
 
-    if (error) throw error
+        const { data, error } = await supabase
+            .from('services')
+            .update(validated)
+            .eq('id', serviceId)
+            .select()
+            .maybeSingle()
 
-    revalidatePath('/dashboard/settings')
-    return data as Service
+        if (error) {
+            console.error("Update service error:", error);
+            throw new Error(`Hizmet güncellenemedi: ${error.message}`);
+        }
+
+        if (!data) throw new Error("Hizmet bulunamadı.");
+
+        revalidatePath('/dashboard/settings')
+        return data as Service
+    } catch (err: any) {
+        console.error("Critical error in updateService:", err);
+        throw err;
+    }
 }
 
 export async function deleteService(serviceId: string) {
+    uuidSchema.parse(serviceId)
     const { error } = await supabase
         .from('services')
         .delete()

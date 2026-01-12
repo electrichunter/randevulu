@@ -18,18 +18,21 @@ export const metadata: Metadata = {
   description: "Esnaf ve müşteri iletişimi için basit ve etkili CRM platformu",
 };
 
+import { Toaster } from "sonner";
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="tr">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans`}
       >
         <Navbar />
         {children}
+        <Toaster position="top-right" richColors closeButton />
       </body>
     </html>
   );

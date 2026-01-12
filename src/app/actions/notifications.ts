@@ -2,6 +2,7 @@
 
 import { supabase } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
+import { notificationSchema, uuidSchema } from '@/lib/validations'
 
 export interface Notification {
     id: string
@@ -15,6 +16,7 @@ export interface Notification {
 }
 
 export async function getNotificationsByUser(userId: string) {
+    uuidSchema.parse(userId)
     const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -26,6 +28,7 @@ export async function getNotificationsByUser(userId: string) {
 }
 
 export async function getUnreadCount(userId: string) {
+    uuidSchema.parse(userId)
     const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
@@ -38,24 +41,36 @@ export async function getUnreadCount(userId: string) {
 
 export async function createNotification(notification: {
     user_id: string
-    type: string
+    type: 'appointment_approved' | 'appointment_rejected' | 'appointment_reminder' | 'appointment_created' | 'system'
     title: string
     message: string
     related_appointment_id?: string
 }) {
-    const { data, error } = await supabase
-        .from('notifications')
-        .insert(notification)
-        .select()
-        .single()
+    try {
+        // Validate inputs
+        const validated = notificationSchema.parse(notification)
 
-    if (error) throw error
+        const { data, error } = await supabase
+            .from('notifications')
+            .insert(validated)
+            .select()
+            .maybeSingle()
 
-    revalidatePath('/dashboard/notifications')
-    return data as Notification
+        if (error) {
+            console.error("Create notification error:", error);
+            throw new Error(`Bildirim oluşturulamadı: ${error.message}`);
+        }
+
+        revalidatePath('/dashboard/notifications')
+        return data as Notification
+    } catch (err: any) {
+        console.error("Critical error in createNotification:", err);
+        throw err;
+    }
 }
 
 export async function markAsRead(notificationId: string) {
+    uuidSchema.parse(notificationId)
     const { error } = await supabase
         .from('notifications')
         .update({ read: true })
@@ -67,6 +82,7 @@ export async function markAsRead(notificationId: string) {
 }
 
 export async function markAllAsRead(userId: string) {
+    uuidSchema.parse(userId)
     const { error } = await supabase
         .from('notifications')
         .update({ read: true })

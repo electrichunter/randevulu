@@ -12,6 +12,8 @@ import { supabase } from "@/lib/supabase";
 import { CustomAlert } from "@/components/custom-alert";
 import { logErrorToTerminal } from "@/app/actions/log-error";
 import { getServicesByTenant, createService, updateService, deleteService, type Service } from "@/app/actions/services";
+import { profileSchema } from "@/lib/validations";
+import { Switch } from "@/components/ui/switch";
 
 const PAYMENT_METHODS = [
     { id: "cash", label: "Nakit" },
@@ -38,6 +40,11 @@ export default function SettingsPage() {
     const [city, setCity] = useState("Ankara");
     const [district, setDistrict] = useState("");
     const [selectedMethods, setSelectedMethods] = useState<string[]>([]);
+
+    // Personal Profile
+    const [userFullName, setUserFullName] = useState("");
+    const [userPhone, setUserPhone] = useState("");
+    const [userRole, setUserRole] = useState<string | null>(null);
 
     // Services
     const [services, setServices] = useState<Service[]>([]);
@@ -66,9 +73,15 @@ export default function SettingsPage() {
 
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('tenant_id')
+                .select('tenant_id, full_name, phone, role')
                 .eq('id', session.user.id)
                 .single();
+
+            if (profile) {
+                setUserFullName(profile.full_name || "");
+                setUserPhone(profile.phone || "");
+                setUserRole(profile.role);
+            }
 
             const authName = session.user.user_metadata.full_name || session.user.user_metadata.name || "";
             if (!businessName && authName) {
@@ -138,63 +151,81 @@ export default function SettingsPage() {
 
             let currentTenantId = tenantId;
 
-            if (!currentTenantId) {
-                const { data: newTenant, error: tenantError } = await supabase
-                    .from('tenants')
-                    .insert({
-                        name: businessName || "İsimsiz İşletme",
-                        settings: {
-                            description,
-                            phone,
-                            address,
-                            city,
-                            district,
-                            payment_methods: selectedMethods,
-                            working_hours: workingHours
-                        }
-                    })
-                    .select()
-                    .single();
+            // Branch logic based on role
+            if (userRole === 'owner' || userRole === 'staff') {
+                // BUSINESS USER LOGIC
+                if (!currentTenantId) {
+                    const { data: newTenant, error: tenantError } = await supabase
+                        .from('tenants')
+                        .insert({
+                            name: businessName || "İsimsiz İşletme",
+                            settings: {
+                                description,
+                                phone,
+                                address,
+                                city,
+                                district,
+                                payment_methods: selectedMethods,
+                                working_hours: workingHours
+                            }
+                        })
+                        .select()
+                        .single();
 
-                if (tenantError) throw tenantError;
-                currentTenantId = newTenant.id;
-                setTenantId(newTenant.id);
+                    if (tenantError) throw tenantError;
+                    currentTenantId = newTenant.id;
+                    setTenantId(newTenant.id);
 
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .upsert({
-                        id: session.user.id,
-                        tenant_id: newTenant.id,
-                        role: 'owner',
-                        full_name: session.user.user_metadata.full_name || session.user.email
-                    });
+                    const { error: profileError } = await supabase
+                        .from('profiles')
+                        .upsert({
+                            id: session.user.id,
+                            tenant_id: newTenant.id,
+                            role: 'owner',
+                            full_name: session.user.user_metadata.full_name || session.user.email
+                        });
 
-                if (profileError) throw profileError;
+                    if (profileError) throw profileError;
+                    setUserRole('owner');
+                } else {
+                    const { error } = await supabase
+                        .from('tenants')
+                        .update({
+                            name: businessName,
+                            settings: {
+                                description,
+                                phone,
+                                address,
+                                city,
+                                district,
+                                payment_methods: selectedMethods,
+                                working_hours: workingHours
+                            }
+                        })
+                        .eq('id', currentTenantId);
 
-                setAlert({ type: "success", title: "Kurulum Tamamlandı", message: "İşletmeniz başarıyla oluşturuldu ve veritabanına bağlandı." });
-                setLoading(false);
-                return;
+                    if (error) throw error;
+                }
             }
 
-            const { error } = await supabase
-                .from('tenants')
+            // PERSONAL PROFILE UPDATE (For all users)
+            const { error: personalError } = await supabase
+                .from('profiles')
                 .update({
-                    name: businessName,
-                    settings: {
-                        description,
-                        phone,
-                        address,
-                        city,
-                        district,
-                        payment_methods: selectedMethods,
-                        working_hours: workingHours
-                    }
+                    full_name: userFullName,
+                    phone: userPhone
                 })
-                .eq('id', currentTenantId);
+                .eq('id', session.user.id);
 
-            if (error) throw error;
+            if (personalError) throw personalError;
 
-            setAlert({ type: "success", title: "Kaydedildi", message: "İşletme bilgileriniz başarıyla güncellendi." });
+            setAlert({
+                type: "success",
+                title: "Kaydedildi",
+                message: userRole === 'customer'
+                    ? "Profil bilgileriniz başarıyla güncellendi."
+                    : "İşletme ve profil bilgileriniz başarıyla güncellendi."
+            });
 
         } catch (error: any) {
             console.error("Kayıt hatası:", error);
@@ -248,11 +279,17 @@ export default function SettingsPage() {
                     <Link href="/dashboard" className="inline-flex items-center text-sm text-slate-500 hover:text-blue-600 mb-4 transition-colors">
                         <ArrowLeft className="h-4 w-4 mr-1" /> Panele Dön
                     </Link>
-                    <h1 className="text-3xl font-bold text-slate-900">İşletme Yönetimi</h1>
-                    <p className="text-slate-500">Dükkanınızın görünürlüğünü ve ayarlarını yönetin.</p>
+                    <h1 className="text-3xl font-bold text-slate-900">
+                        {userRole === 'owner' || userRole === 'staff' ? "İşletme Yönetimi" : "Hesap Ayarları"}
+                    </h1>
+                    <p className="text-slate-500">
+                        {userRole === 'owner' || userRole === 'staff'
+                            ? "Dükkanınızın görünürlüğünü ve ayarlarını yönetin."
+                            : "Kişisel profil bilgilerinizi güncelleyin."}
+                    </p>
                 </div>
 
-                {/* Tabs */}
+                {/* Tabs - Only show all for business users */}
                 <div className="flex gap-4 mb-6 border-b border-slate-200">
                     <button
                         onClick={() => setActiveTab("profile")}
@@ -262,28 +299,32 @@ export default function SettingsPage() {
                             }`}
                     >
                         <Building className="inline h-4 w-4 mr-2" />
-                        Profil Bilgileri
+                        {userRole === 'owner' || userRole === 'staff' ? "Profil Bilgileri" : "Kişisel Profil"}
                     </button>
-                    <button
-                        onClick={() => setActiveTab("services")}
-                        className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === "services"
-                            ? "border-blue-600 text-blue-600"
-                            : "border-transparent text-slate-500 hover:text-slate-700"
-                            }`}
-                    >
-                        <ListIcon className="inline h-4 w-4 mr-2" />
-                        Hizmetler
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("hours")}
-                        className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === "hours"
-                                ? "border-blue-600 text-blue-600"
-                                : "border-transparent text-slate-500 hover:text-slate-700"
-                            }`}
-                    >
-                        <Clock className="inline h-4 w-4 mr-2" />
-                        Çalışma Saatleri
-                    </button>
+                    {(userRole === 'owner' || userRole === 'staff') && (
+                        <>
+                            <button
+                                onClick={() => setActiveTab("services")}
+                                className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === "services"
+                                    ? "border-blue-600 text-blue-600"
+                                    : "border-transparent text-slate-500 hover:text-slate-700"
+                                    }`}
+                            >
+                                <ListIcon className="inline h-4 w-4 mr-2" />
+                                Hizmetler
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("hours")}
+                                className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === "hours"
+                                    ? "border-blue-600 text-blue-600"
+                                    : "border-transparent text-slate-500 hover:text-slate-700"
+                                    }`}
+                            >
+                                <Clock className="inline h-4 w-4 mr-2" />
+                                Çalışma Saatleri
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {alert && (
@@ -300,110 +341,113 @@ export default function SettingsPage() {
                 {/* Profile Tab */}
                 {activeTab === "profile" && (
                     <div className="grid gap-6">
+                        {(userRole === 'owner' || userRole === 'staff') && (
+                            <Card className="border-slate-200 shadow-sm">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Building className="h-5 w-5 text-blue-600" />
+                                        Genel Bilgiler
+                                    </CardTitle>
+                                    <CardDescription>Müşterilerinizin göreceği temel bilgiler.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="name">İşletme Adı</Label>
+                                            <Input
+                                                id="name"
+                                                placeholder="Örn: Gold Makas"
+                                                value={businessName}
+                                                onChange={(e) => setBusinessName(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="phone">Telefon</Label>
+                                            <Input
+                                                id="phone"
+                                                placeholder="0212 555 55 55"
+                                                value={phone}
+                                                onChange={(e) => setPhone(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="description">Hakkımızda (Açıklama)</Label>
+                                        <Textarea
+                                            id="description"
+                                            placeholder="İşletmenizi tanıtan kısa bir yazı yazın..."
+                                            className="resize-none"
+                                            rows={4}
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                        />
+                                        <p className="text-xs text-slate-500 text-right">{description.length}/500</p>
+                                    </div>
+
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="city">Şehir</Label>
+                                            <Input
+                                                id="city"
+                                                value={city}
+                                                onChange={(e) => setCity(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="district">İlçe</Label>
+                                            <Input
+                                                id="district"
+                                                placeholder="Örn: Çankaya"
+                                                value={district}
+                                                onChange={(e) => setDistrict(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="address">Açık Adres</Label>
+                                        <Textarea
+                                            id="address"
+                                            placeholder="Mahalle, Cadde, No..."
+                                            rows={2}
+                                            value={address}
+                                            onChange={(e) => setAddress(e.target.value)}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         <Card className="border-slate-200 shadow-sm">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
-                                    <Building className="h-5 w-5 text-blue-600" />
-                                    Genel Bilgiler
+                                    <ListIcon className="h-5 w-5 text-purple-600" />
+                                    Kişisel Profil
                                 </CardTitle>
-                                <CardDescription>Müşterilerinizin göreceği temel bilgiler.</CardDescription>
+                                <CardDescription>Randevu alırken formun otomatik dolması için bilgilerinizi eksiksiz girin.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="name">İşletme Adı</Label>
+                                        <Label htmlFor="user_name">Ad Soyad</Label>
                                         <Input
-                                            id="name"
-                                            placeholder="Örn: Gold Makas"
-                                            value={businessName}
-                                            onChange={(e) => setBusinessName(e.target.value)}
+                                            id="user_name"
+                                            placeholder="Adınız ve Soyadınız"
+                                            value={userFullName}
+                                            onChange={(e) => setUserFullName(e.target.value)}
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="phone">Telefon</Label>
+                                        <Label htmlFor="user_phone">Kişisel Telefon</Label>
                                         <Input
-                                            id="phone"
-                                            placeholder="0212 555 55 55"
-                                            value={phone}
-                                            onChange={(e) => setPhone(e.target.value)}
+                                            id="user_phone"
+                                            placeholder="05xx xxx xx xx"
+                                            value={userPhone}
+                                            onChange={(e) => setUserPhone(e.target.value)}
                                         />
+                                        {!userPhone && <p className="text-xs text-amber-600 font-medium">⚠️ Telefon numarası eksik! Randevu alırken bu numarayı girmek zorunda kalacaksınız.</p>}
                                     </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="description">Hakkımızda (Açıklama)</Label>
-                                    <Textarea
-                                        id="description"
-                                        placeholder="İşletmenizi tanıtan kısa bir yazı yazın..."
-                                        className="resize-none"
-                                        rows={4}
-                                        value={description}
-                                        onChange={(e) => setDescription(e.target.value)}
-                                    />
-                                    <p className="text-xs text-slate-500 text-right">{description.length}/500</p>
-                                </div>
-
-                                <div className="grid md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="city">Şehir</Label>
-                                        <Input
-                                            id="city"
-                                            value={city}
-                                            onChange={(e) => setCity(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="district">İlçe</Label>
-                                        <Input
-                                            id="district"
-                                            placeholder="Örn: Çankaya"
-                                            value={district}
-                                            onChange={(e) => setDistrict(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="address">Açık Adres</Label>
-                                    <Textarea
-                                        id="address"
-                                        placeholder="Mahalle, Cadde, No..."
-                                        rows={2}
-                                        value={address}
-                                        onChange={(e) => setAddress(e.target.value)}
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="border-slate-200 shadow-sm">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <CreditCard className="h-5 w-5 text-green-600" />
-                                    Ödeme Yöntemleri
-                                </CardTitle>
-                                <CardDescription>Kabul ettiğiniz ödeme tiplerini işaretleyin.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                    {PAYMENT_METHODS.map((method) => (
-                                        <div
-                                            key={method.id}
-                                            onClick={() => toggleMethod(method.id)}
-                                            className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${selectedMethods.includes(method.id)
-                                                ? "bg-blue-50 border-blue-500 text-blue-700 shadow-sm"
-                                                : "hover:bg-gray-50 border-gray-200 text-slate-600"
-                                                }`}
-                                        >
-                                            <div className={`w-5 h-5 rounded border flex items-center justify-center mr-3 transition-colors ${selectedMethods.includes(method.id)
-                                                ? "bg-blue-600 border-blue-600"
-                                                : "border-gray-400 bg-white"
-                                                }`}>
-                                                {selectedMethods.includes(method.id) && <span className="text-white text-xs font-bold">✓</span>}
-                                            </div>
-                                            <span className="text-sm font-medium">{method.label}</span>
-                                        </div>
-                                    ))}
                                 </div>
                             </CardContent>
                         </Card>
@@ -411,76 +455,102 @@ export default function SettingsPage() {
                         <div className="flex justify-end sticky bottom-6 z-10">
                             <Button size="lg" onClick={handleSaveProfile} disabled={loading} className="bg-blue-600 hover:bg-blue-700 shadow-lg px-8">
                                 <Save className="mr-2 h-4 w-4" />
-                                {loading ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+                                {loading ? "Kaydediliyor..." : "Tüm Bilgileri Kaydet"}
                             </Button>
                         </div>
                     </div>
                 )}
 
-                {/* Services Tab */}
-                {activeTab === "services" && (
+                {/* Working Hours Tab */}
+                {activeTab === "hours" && (
                     <div className="grid gap-6">
                         <Card className="border-slate-200 shadow-sm">
                             <CardHeader>
-                                <CardTitle>Hizmet Ekle</CardTitle>
-                                <CardDescription>İşletmenizde sunduğunuz hizmetleri tanımlayın.</CardDescription>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Clock className="h-5 w-5 text-blue-600" />
+                                    Çalışma Saatlerini Düzenle
+                                </CardTitle>
+                                <CardDescription>Müşterilerinizin hangi gün ve saatlerde randevu alabileceğini belirleyin.</CardDescription>
                             </CardHeader>
-                            <CardContent>
-                                <div className="grid md:grid-cols-3 gap-4 mb-4">
-                                    <Input
-                                        placeholder="Hizmet Adı"
-                                        value={newService.name}
-                                        onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                                    />
-                                    <Input
-                                        type="number"
-                                        placeholder="Süre (dakika)"
-                                        value={newService.duration_minutes}
-                                        onChange={(e) => setNewService({ ...newService, duration_minutes: parseInt(e.target.value) || 0 })}
-                                    />
-                                    <Input
-                                        type="number"
-                                        placeholder="Fiyat (₺)"
-                                        value={newService.price}
-                                        onChange={(e) => setNewService({ ...newService, price: parseFloat(e.target.value) || 0 })}
-                                    />
-                                </div>
-                                <Button onClick={handleAddService} className="bg-green-600 hover:bg-green-700">
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Hizmet Ekle
-                                </Button>
-                            </CardContent>
-                        </Card>
+                            <CardContent className="space-y-6">
+                                <div className="space-y-4">
+                                    {(Object.keys(workingHours) as Array<keyof typeof workingHours>).map((day) => {
+                                        const dayNames: { [key: string]: string } = {
+                                            monday: "Pazartesi",
+                                            tuesday: "Salı",
+                                            wednesday: "Çarşamba",
+                                            thursday: "Perşembe",
+                                            friday: "Cuma",
+                                            saturday: "Cumartesi",
+                                            sunday: "Pazar"
+                                        };
 
-                        <Card className="border-slate-200 shadow-sm">
-                            <CardHeader>
-                                <CardTitle>Mevcut Hizmetler</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {services.length === 0 ? (
-                                    <p className="text-slate-500 text-center py-8">Henüz hizmet eklenmemiş.</p>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {services.map((service) => (
-                                            <div key={service.id} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                                <div>
-                                                    <h4 className="font-medium text-slate-900">{service.name}</h4>
-                                                    <p className="text-sm text-slate-500">
-                                                        {service.duration_minutes} dakika • {service.price} {service.currency}
-                                                    </p>
+                                        return (
+                                            <div key={day} className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-xl transition-all ${workingHours[day].closed ? "bg-slate-50 border-slate-100 opacity-70" : "bg-white border-slate-200 shadow-sm"}`}>
+                                                <div className="flex items-center gap-4 mb-3 sm:mb-0">
+                                                    <div className="w-24 font-bold text-slate-700">{dayNames[day]}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Switch
+                                                            checked={!workingHours[day].closed}
+                                                            onCheckedChange={(checked: boolean) => {
+                                                                setWorkingHours(prev => ({
+                                                                    ...prev,
+                                                                    [day]: { ...prev[day], closed: !checked }
+                                                                }));
+                                                            }}
+                                                        />
+                                                        <span className="text-sm text-slate-500 w-16">
+                                                            {!workingHours[day].closed ? "Açık" : "Kapalı"}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleDeleteService(service.id)}
-                                                    className="text-red-600 hover:bg-red-50"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+
+                                                {!workingHours[day].closed && (
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Clock className="h-4 w-4 text-slate-400" />
+                                                            <Input
+                                                                type="time"
+                                                                className="w-24 h-9 p-2 text-sm"
+                                                                value={workingHours[day].start}
+                                                                onChange={(e) => {
+                                                                    setWorkingHours(prev => ({
+                                                                        ...prev,
+                                                                        [day]: { ...prev[day], start: e.target.value }
+                                                                    }));
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-slate-400 font-bold">-</span>
+                                                        <Input
+                                                            type="time"
+                                                            className="w-24 h-9 p-2 text-sm"
+                                                            value={workingHours[day].end}
+                                                            onChange={(e) => {
+                                                                setWorkingHours(prev => ({
+                                                                    ...prev,
+                                                                    [day]: { ...prev[day], end: e.target.value }
+                                                                }));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                )}
+                                                {workingHours[day].closed && (
+                                                    <div className="text-sm font-medium text-slate-400 px-4 py-2 italic bg-slate-100/50 rounded-lg">
+                                                        Bugün işletmeniz hizmet vermiyor.
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="pt-6 border-t border-slate-100 flex justify-end">
+                                    <Button onClick={handleSaveProfile} disabled={loading} className="bg-blue-600 hover:bg-blue-700 shadow-lg px-8">
+                                        <Save className="mr-2 h-4 w-4" />
+                                        {loading ? "Kaydediliyor..." : "Çalışma Saatlerini Kaydet"}
+                                    </Button>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>

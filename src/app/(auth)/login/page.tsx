@@ -6,37 +6,56 @@ import Link from "next/link";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { loginSchema, type LoginFormData } from "@/lib/validations";
+
+import { toast } from "sonner";
 
 export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [rememberMe, setRememberMe] = useState(true); // Default true
+    const [errors, setErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({});
     const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
+        setErrors({});
 
         const formData = new FormData(e.currentTarget);
         const email = formData.get("email") as string;
         const password = formData.get("password") as string;
 
-        try {
-            // Not: Supabase varsayılan olarak oturumu LocalStorage'da tutar (Beni Hatırla: Aktif).
-            // Kullanıcı "Beni Hatırla"yı seçmese bile şimdilik varsayılan davranış korunuyor.
+        // Validate with Zod
+        const validation = loginSchema.safeParse({ email, password });
 
+        if (!validation.success) {
+            const fieldErrors: Partial<Record<keyof LoginFormData, string>> = {};
+            validation.error.issues.forEach((issue) => {
+                if (issue.path[0]) {
+                    fieldErrors[issue.path[0] as keyof LoginFormData] = issue.message;
+                }
+            });
+            setErrors(fieldErrors);
+            setLoading(false);
+            toast.error("Lütfen formdaki hataları kontrol edin.");
+            return;
+        }
+
+        try {
             const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
+                email: validation.data.email,
+                password: validation.data.password,
             });
 
             if (error) {
-                alert("Giriş başarısız: " + error.message);
+                toast.error("Giriş başarısız: " + error.message);
             } else {
+                toast.success("Giriş başarılı! Yönlendiriliyorsunuz...");
                 router.push("/dashboard");
             }
         } catch (error) {
             console.error("Login error:", error);
-            alert("Bir hata oluştu.");
+            toast.error("Beklenmedik bir hata oluştu.");
         } finally {
             setLoading(false);
         }
@@ -60,8 +79,12 @@ export default function LoginPage() {
                             autoComplete="email"
                             required
                             placeholder="ornek@esnaf.com"
+                            className={errors.email ? "border-red-300 focus-visible:ring-red-500" : ""}
                         />
                     </div>
+                    {errors.email && (
+                        <p className="mt-1 text-xs text-red-500">{errors.email}</p>
+                    )}
                 </div>
 
                 <div>
@@ -85,8 +108,12 @@ export default function LoginPage() {
                             type="password"
                             autoComplete="current-password"
                             required
+                            className={errors.password ? "border-red-300 focus-visible:ring-red-500" : ""}
                         />
                     </div>
+                    {errors.password && (
+                        <p className="mt-1 text-xs text-red-500">{errors.password}</p>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-between">

@@ -10,7 +10,28 @@ if (!supabaseUrl || !supabaseAnonKey) {
     console.warn("Supabase URL veya Anon Key eksik! .env.local dosyasını kontrol edin.");
 }
 
+// Standart client (Public/RLS bağımlı)
 export const supabase = createClient(
     supabaseUrl || 'https://placeholder.supabase.co',
     supabaseAnonKey || 'placeholder'
+);
+
+// Admin Key kontrolü (Sadece Server side)
+if (typeof window === 'undefined' && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY eksik! Server Action'lar RLS engeline takılabilir.");
+}
+
+// Admin client (Service Role - RLS Bypass)
+// SADECE Server Action'larda ve güvenli ortamlarda kullanılmalıdır!
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+export const supabaseAdmin = createClient(
+    supabaseUrl || 'https://placeholder.supabase.co',
+    supabaseServiceRoleKey || supabaseAnonKey || 'placeholder',
+    {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false
+        }
+    }
 );
