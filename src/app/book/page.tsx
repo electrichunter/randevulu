@@ -1,6 +1,4 @@
-"use client";
-
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { Button } from "@/components/ui/button";
@@ -10,12 +8,11 @@ import { supabase } from "@/lib/supabase";
 import { AlertCircle } from "lucide-react";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
 import { toast } from "sonner";
 import { createAppointment } from "@/app/actions/appointments";
 import { uuidSchema } from "@/lib/validations";
 
-export default function BookPage() {
+function BookContent() {
     const searchParams = useSearchParams();
     const shopId = searchParams.get("shopId");
 
@@ -195,132 +192,143 @@ export default function BookPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+        <main className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
+            <div className="max-w-xl mx-auto">
+                <Card>
+                    <CardHeader className="text-center">
+                        <CardTitle className="text-2xl">
+                            {shopName ? `${shopName} - Randevu Al` : "Online Randevu Al"}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
 
-            <main className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
-                <div className="max-w-xl mx-auto">
-                    <Card>
-                        <CardHeader className="text-center">
-                            <CardTitle className="text-2xl">
-                                {shopName ? `${shopName} - Randevu Al` : "Online Randevu Al"}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-
-                            {/* Hizmet Seçimi */}
-                            {services.length > 0 && (
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Hizmet Seçiniz</label>
-                                    <select
-                                        className="w-full p-2 border border-gray-200 rounded-md bg-white"
-                                        value={selectedService}
-                                        onChange={(e) => setSelectedService(e.target.value)}
-                                    >
-                                        {services.map(service => (
-                                            <option key={service.id} value={service.id}>
-                                                {service.name} - {service.price} {service.currency} ({service.duration_minutes} dk)
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {/* Tarih Seçimi */}
+                        {/* Hizmet Seçimi */}
+                        {services.length > 0 && (
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Tarih Seçiniz</label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        type="date"
-                                        value={date}
-                                        onChange={(e) => setDate(e.target.value)}
-                                        min={new Date().toISOString().split("T")[0]}
-                                    />
-                                    <Button onClick={checkAvailability} disabled={loading}>
-                                        {loading ? "Kontrol..." : "Saatleri Gör"}
-                                    </Button>
+                                <label className="text-sm font-medium">Hizmet Seçiniz</label>
+                                <select
+                                    className="w-full p-2 border border-gray-200 rounded-md bg-white"
+                                    value={selectedService}
+                                    onChange={(e) => setSelectedService(e.target.value)}
+                                >
+                                    {services.map(service => (
+                                        <option key={service.id} value={service.id}>
+                                            {service.name} - {service.price} {service.currency} ({service.duration_minutes} dk)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Tarih Seçimi */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Tarih Seçiniz</label>
+                            <div className="flex gap-2">
+                                <Input
+                                    type="date"
+                                    value={date}
+                                    onChange={(e) => setDate(e.target.value)}
+                                    min={new Date().toISOString().split("T")[0]}
+                                />
+                                <Button onClick={checkAvailability} disabled={loading}>
+                                    {loading ? "Kontrol..." : "Saatleri Gör"}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Saat Seçimi (Grid) */}
+                        {availableSlots.length > 0 && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Müsait Saatler</label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {availableSlots.map((slot) => (
+                                        <button
+                                            key={slot}
+                                            onClick={() => setSelectedSlot(slot)}
+                                            className={`py-2 px-1 rounded-md text-sm cursor-pointer transition-colors border ${selectedSlot === slot
+                                                ? "bg-blue-600 text-white border-blue-600"
+                                                : "bg-white hover:bg-gray-50 border-gray-200"
+                                                }`}
+                                        >
+                                            {slot}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
+                        )}
 
-                            {/* Saat Seçimi (Grid) */}
-                            {availableSlots.length > 0 && (
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Müsait Saatler</label>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {availableSlots.map((slot) => (
-                                            <button
-                                                key={slot}
-                                                onClick={() => setSelectedSlot(slot)}
-                                                className={`py-2 px-1 rounded-md text-sm cursor-pointer transition-colors border ${selectedSlot === slot
-                                                    ? "bg-blue-600 text-white border-blue-600"
-                                                    : "bg-white hover:bg-gray-50 border-gray-200"
-                                                    }`}
-                                            >
-                                                {slot}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Kişisel Bilgiler ve Onay */}
-                            {selectedSlot && (
-                                <div className="space-y-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-4">
-                                    {(hasPreFilledData && !showContactForm) ? (
-                                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                                            <div className="space-y-1">
-                                                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Randevu Sahibi</p>
-                                                <p className="font-semibold text-slate-900">{customerName}</p>
-                                                <p className="text-sm text-slate-600">{customerPhone}</p>
-                                            </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                onClick={() => setShowContactForm(true)}
-                                            >
-                                                Değiştir
-                                            </Button>
+                        {/* Kişisel Bilgiler ve Onay */}
+                        {selectedSlot && (
+                            <div className="space-y-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-4">
+                                {(hasPreFilledData && !showContactForm) ? (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Randevu Sahibi</p>
+                                            <p className="font-semibold text-slate-900">{customerName}</p>
+                                            <p className="text-sm text-slate-600">{customerPhone}</p>
                                         </div>
-                                    ) : (
-                                        <>
-                                            {!customerPhone && (
-                                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-3 text-amber-800 text-sm">
-                                                    <AlertCircle className="h-5 w-5 shrink-0" />
-                                                    <div>
-                                                        <p className="font-semibold">Telefon numaranız eksik!</p>
-                                                        <p>Profilinizde numaranız kayıtlı değil. <a href="/dashboard/settings" className="underline font-bold">Ayarlardan</a> numaranızı ekleyerek bir sonraki randevularınızın otomatik dolmasını sağlayabilirsiniz.</p>
-                                                    </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                            onClick={() => setShowContactForm(true)}
+                                        >
+                                            Değiştir
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {!customerPhone && (
+                                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-3 text-amber-800 text-sm">
+                                                <AlertCircle className="h-5 w-5 shrink-0" />
+                                                <div>
+                                                    <p className="font-semibold">Telefon numaranız eksik!</p>
+                                                    <p>Profilinizde numaranız kayıtlı değil. <a href="/dashboard/settings" className="underline font-bold">Ayarlardan</a> numaranızı ekleyerek bir sonraki randevularınızın otomatik dolmasını sağlayabilirsiniz.</p>
                                                 </div>
-                                            )}
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Adınız Soyadınız</label>
-                                                <Input placeholder="Örn: Ahmet Yılmaz" value={customerName} onChange={e => setCustomerName(e.target.value)} />
                                             </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Telefon Numaranız</label>
-                                                <Input placeholder="0555 555 55 55" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
-                                            </div>
-                                            {hasPreFilledData && (
-                                                <button
-                                                    className="text-xs text-slate-400 hover:text-slate-600 underline"
-                                                    onClick={() => setShowContactForm(false)}
-                                                >
-                                                    Vazgeç, kayıtlı bilgileri kullan
-                                                </button>
-                                            )}
-                                        </>
-                                    )}
-                                    <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleBook} disabled={loading}>
-                                        {loading ? "Rezervasyon Yapılıyor..." : `Randevuyu Onayla (${date} - ${selectedSlot})`}
-                                    </Button>
-                                </div>
-                            )}
+                                        )}
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Adınız Soyadınız</label>
+                                            <Input placeholder="Örn: Ahmet Yılmaz" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Telefon Numaranız</label>
+                                            <Input placeholder="0555 555 55 55" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
+                                        </div>
+                                        {hasPreFilledData && (
+                                            <button
+                                                className="text-xs text-slate-400 hover:text-slate-600 underline"
+                                                onClick={() => setShowContactForm(false)}
+                                            >
+                                                Vazgeç, kayıtlı bilgileri kullan
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                                <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleBook} disabled={loading}>
+                                    {loading ? "Rezervasyon Yapılıyor..." : `Randevuyu Onayla (${date} - ${selectedSlot})`}
+                                </Button>
+                            </div>
+                        )}
 
-                        </CardContent>
-                    </Card>
+                    </CardContent>
+                </Card>
+            </div>
+        </main>
+    );
+}
+
+export default function BookPage() {
+    return (
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+            <Navbar />
+            <Suspense fallback={
+                <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8 flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>
-            </main>
-
+            }>
+                <BookContent />
+            </Suspense>
             <Footer />
         </div>
     );
