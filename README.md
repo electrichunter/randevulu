@@ -202,16 +202,7 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## 🗺️ Roadmap
 
-Detaylı roadmap için [doc/ProjectRoadmap.md](./doc/ProjectRoadmap.md) dosyasına bakın.
-
-### Gelecek Özellikler
-
-- [ ] WhatsApp Business API entegrasyonu
-- [ ] Google Calendar senkronizasyonu
-- [ ] Multi-language support (i18n)
-- [ ] PWA özellikleri (service worker)
-- [ ] Payment gateway entegrasyonu
-- [ ] Advanced analytics dashboard
+Detaylı yol haritası için [ROADMAP.md](./ROADMAP.md) dosyasına bakın.
 
 ---
 
